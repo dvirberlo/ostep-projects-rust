@@ -1,0 +1,9 @@
+**/test/** linguist-vendored=false
+/tester linguist-vendored=false
+# **/*.sh linguist-vendored=false
+# **/*.desc linguist-vendored=false
+# **/*.err linguist-vendored=false
+# **/*.in linguist-vendored=false
+# **/*.out linguist-vendored=false
+# **/*.rc linguist-vendored=false
+# **/*.run linguist-vendored=false
