@@ -5,4 +5,21 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "wcat"
+path = "src/initial-utilities/wcat/wcat.rs"
+[[bin]]
+name = "wgrep"
+path = "src/initial-utilities/wgrep/wgrep.rs"
+[[bin]]
+name = "wzip"
+path = "src/initial-utilities/wzip/wzip.rs"
+[[bin]]
+name = "wunzip"
+path = "src/initial-utilities/wunzip/wunzip.rs"
+
+[[bin]]
+name = "wish"
+path = "src/processes-shell/wish.rs"
+
 [dependencies]
