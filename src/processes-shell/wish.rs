@@ -144,25 +144,33 @@ fn _exec(
     in_bytes: &[u8],
 ) -> Result<Vec<u8>, std::io::Error> {
     // this overhead because the required error message is (for $ls non-existent) "ls: ..." (while if direct path is given, it is "/bin/ls: ...")
+    // but for some reason it doesn't work when the path is relative, so here it is:
     let current: PathBuf = std::env::current_dir()?;
-    std::env::set_current_dir(file_dir)?;
-    let mut cmd: Command = Command::new(Path::new(cmd).to_path_buf());
-    std::env::set_current_dir(current)?;
-    for word in words.iter().skip(1) {
-        cmd.arg(word);
-    }
-    let mut child: std::process::Child =
-        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
+    let mut cmd: Command = match file_dir.is_absolute() {
+        true => {
+            std::env::set_current_dir(&file_dir.clone()).unwrap();
+            Command::new(cmd)
+        }
+        false => Command::new(file_dir.join(cmd).to_str().unwrap()),
+    };
+    cmd.args(words.iter().skip(1));
+
+    let mut child: std::process::Child = cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .current_dir(current.clone())
+        .spawn()?;
 
     let in_bytes: Vec<u8> = in_bytes.to_vec();
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     std::thread::spawn(move || {
         stdin
-            .write_all(&in_bytes[..])
+            .write_all(&in_bytes)
             .expect("Failed to write to stdin");
     });
 
     let output: std::process::Output = child.wait_with_output()?;
+    std::env::set_current_dir(current)?;
     Ok(output.stdout.to_vec())
 }
 
