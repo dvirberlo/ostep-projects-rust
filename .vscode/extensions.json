@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "github.copilot",
+        "rust-lang.rust-analyzer",
+        "editorconfig.editorconfig",
+        "eamodio.gitlens",
+        "vivaxy.vscode-conventional-commits",
+        "fabiospampinato.vscode-todo-plus"
+    ]
+}

@@ -1,0 +1,8 @@
+
+vscode:
+  extensions:
+    - matklad.rust-analyzer
+    - eamodio.gitlens
+    - EditorConfig.EditorConfig
+    - fabiospampinato.vscode-todo-plus
+    - vivaxy.vscode-conventional-commits
