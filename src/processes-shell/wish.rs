@@ -5,6 +5,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::vec;
 
 const ERROR_MSG: &str = "wish: cannot open file\n";
 const SHELL_START: &str = "wish> ";
@@ -65,72 +66,153 @@ fn wish_line(line: String, paths: &mut Vec<String>) {
         .iter()
         .map(|x| x.trim())
         .collect();
-    let mut words: Vec<&str>;
-    let mut output: Vec<u8>;
-    // concurrent use of path command may cause unpredictable results
+    // Note: concurrent use of path command may cause unpredictable results
+    // TODO: concurrency?
     for proc in procs {
-        words = proc.split(' ').collect();
-        output = match wish_cmd(&words, paths, &[]) {
-            Ok(output) => output,
+        match wish_cmd(&proc, paths) {
+            Ok(_) => {}
             Err(_) => {
                 _error();
                 break;
             }
         };
-        print!("{}", std::str::from_utf8(&output).unwrap());
     }
 }
 
-fn wish_cmd(
-    words: &Vec<&str>,
-    paths: &mut Vec<String>,
-    in_bytes: &[u8],
-) -> Result<Vec<u8>, std::io::Error> {
-    let first: &str = words[0];
-    if first == "" {
+enum Mode {
+    Simple,
+    Write,
+}
+fn wish_cmd(cmd: &str, paths: &mut Vec<String>) -> Result<Vec<u8>, std::io::Error> {
+    let mut line: &str = cmd.clone().trim_start();
+    if line.len() == 0 {
         _error_exit();
     }
-    match first {
-        "exit" => _exit(&words),
-        "cd" => _cd(&words),
-        "path" => _path(&words, paths),
-        &_ => match wish_search(&words, paths) {
-            Ok(path) => {
-                return _exec(&words, path, words[0], &in_bytes);
+    let mut first: &str;
+    let mut args: Vec<&str> = vec![];
+    let mut arg: &str = "";
+    let mut output: Vec<u8> = vec![];
+    let mut mode: Mode = Mode::Simple;
+    while line.len() > 0 {
+        first = "";
+        args.clear();
+        if !matches!(mode, Mode::Write) {
+            first = get_token(&mut line);
+            line = line[first.len()..].trim_start();
+        }
+        while line.len() > 0 {
+            arg = get_token(&mut line);
+            line = line[arg.len()..].trim_start();
+            if arg == "|" || arg == ">" {
+                break;
+            } else {
+                args.push(arg);
             }
-            Err(_) => _error(),
-        },
+        }
+        match first {
+            "exit" => _exit(&args),
+            "cd" => _cd(&args),
+            "path" => _path(&args, paths),
+            &_ => {
+                if matches!(mode, Mode::Write) {
+                    output = _write(&args, output.clone());
+                } else {
+                    match wish_search(first, paths) {
+                        Ok(path) => match _exec(&args, path, first, &output) {
+                            Ok(out) => {
+                                output = out;
+                            }
+                            Err(_) => {
+                                _error();
+                            }
+                        },
+                        Err(_) => {
+                            _error();
+                        }
+                    };
+                }
+            }
+        }
+        mode = match arg {
+            ">" => {
+                // multipile redirercions required to be unsupported
+                if matches!(mode, Mode::Write) {
+                    break;
+                }
+                Mode::Write
+            }
+            &_ => Mode::Simple,
+        }
+    }
+    if matches!(mode, Mode::Simple) {
+        print!("{}", String::from_utf8(output).unwrap());
+    } else {
+        _error();
     }
     Ok((&[]).to_vec())
 }
-fn _exit(_word: &Vec<&str>) {
-    if _word.len() == 1 {
+
+fn get_token(line: &str) -> &str {
+    let mut i: usize = 0;
+    for c in line.chars() {
+        if c == ' ' || c == '>' || c == '|' {
+            if i == 0 {
+                i = 1;
+            }
+            break;
+        }
+        i += 1;
+    }
+    &line[0..i]
+}
+
+fn _write(args: &[&str], output: Vec<u8>) -> Vec<u8> {
+    if args.len() != 1 || args[0].len() == 0 {
+        _error();
+        return vec![];
+    }
+    match std::fs::write(args[0], output) {
+        Ok(_) => {
+            return vec![];
+        }
+        Err(_) => {
+            _error();
+            return vec![];
+        }
+    }
+}
+
+fn _exit(args: &Vec<&str>) {
+    if args.len() == 0 {
         std::process::exit(0);
     } else {
         _error();
     }
 }
-fn _cd(words: &Vec<&str>) {
-    if words.len() != 2 {
-        return _error();
+fn _cd(args: &Vec<&str>) {
+    if args.len() != 1 {
+        _error();
+        return;
     }
-    match std::env::set_current_dir(words[1]) {
+    match std::env::set_current_dir(args[0]) {
         Ok(_) => {}
-        Err(_) => _error(),
+        Err(_) => {
+            _error();
+        }
     }
 }
-fn _path(words: &Vec<&str>, paths: &mut Vec<String>) {
+fn _path(args: &Vec<&str>, paths: &mut Vec<String>) {
     paths.clear();
-    for word in words.iter().skip(1) {
+    for word in args.iter() {
         paths.push(word.to_string());
     }
 }
 
-fn wish_search(words: &Vec<&str>, paths: &Vec<String>) -> Result<PathBuf, std::io::Error> {
+fn wish_search(cmd: &str, paths: &Vec<String>) -> Result<PathBuf, std::io::Error> {
     let mut file_path: &Path;
     for path in paths {
         file_path = Path::new(path);
-        if file_path.join(words[0]).exists() {
+        if file_path.join(cmd).exists() {
             return Ok(file_path.to_path_buf());
         }
     }
@@ -153,7 +235,7 @@ fn _exec(
         }
         false => Command::new(file_dir.join(cmd).to_str().unwrap()),
     };
-    cmd.args(words.iter().skip(1));
+    cmd.args(words.iter());
 
     let mut child: std::process::Child = cmd
         .stdin(Stdio::piped())
@@ -174,8 +256,9 @@ fn _exec(
     Ok(output.stdout.to_vec())
 }
 
-fn _error() {
+fn _error() -> Vec<u8> {
     eprint!("{}", SHELL_ERROR);
+    SHELL_ERROR.as_bytes().to_vec()
 }
 fn _error_exit() -> ! {
     eprint!("{}", ERROR_MSG);
