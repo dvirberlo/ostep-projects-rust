@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::vec;
 
-const ERROR_MSG: &str = "wish: cannot open file\n";
 const SHELL_START: &str = "wish> ";
 const SHELL_ERROR: &str = "An error has occurred\n";
 
@@ -44,10 +43,7 @@ fn from_file(filenames: &[String], paths: &mut Vec<String>) {
     for filename in filenames {
         file = match File::open(&filename) {
             Ok(file) => file,
-            Err(_) => {
-                print!("{}", ERROR_MSG);
-                std::process::exit(1);
-            }
+            Err(_) => _error_exit(),
         };
         reader = BufReader::new(file);
         for line in reader.lines() {
@@ -86,7 +82,7 @@ enum Mode {
 fn wish_cmd(cmd: &str, paths: &mut Vec<String>) -> Result<Vec<u8>, std::io::Error> {
     let mut line: &str = cmd.clone().trim_start();
     if line.len() == 0 {
-        _error_exit();
+        return Ok(vec![]);
     }
     let mut first: &str;
     let mut args: Vec<&str> = vec![];
@@ -261,6 +257,6 @@ fn _error() -> Vec<u8> {
     SHELL_ERROR.as_bytes().to_vec()
 }
 fn _error_exit() -> ! {
-    eprint!("{}", ERROR_MSG);
+    eprint!("{}", SHELL_ERROR);
     std::process::exit(1);
 }
