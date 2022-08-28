@@ -5,6 +5,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::thread;
 use std::vec;
 
 const SHELL_START: &str = "wish> ";
@@ -56,20 +57,35 @@ fn from_file(filenames: &[String], paths: &mut Vec<String>) {
 }
 
 fn wish_line(line: String, paths: &mut Vec<String>) {
-    let procs: Vec<&str> = line
-        .split('&')
-        .collect::<Vec<&str>>()
-        .iter()
-        .map(|x| x.trim())
-        .collect();
+    let procs: &mut Vec<String> = &mut vec![];
+    for p in line.split('&').collect::<Vec<&str>>().iter() {
+        procs.push(p.trim().to_string());
+    }
     // Note: concurrent use of path command may cause unpredictable results
-    // TODO: concurrency?
-    for proc in procs {
-        match wish_cmd(&proc, paths) {
+    // therefore if the line is a cocurrent command, the path is cloned and not updated globally
+    if procs.len() > 1 {
+        let mut childs = vec![];
+        for proc in procs {
+            let mut paths_moved = paths.clone();
+            let proc_moved = proc.clone();
+            let child = thread::spawn(move || {
+                match wish_cmd(&proc_moved, &mut paths_moved) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        _error();
+                    }
+                };
+            });
+            childs.push(child);
+        }
+        for child in childs {
+            child.join().unwrap();
+        }
+    } else {
+        match wish_cmd(&procs[0], paths) {
             Ok(_) => {}
             Err(_) => {
                 _error();
-                break;
             }
         };
     }
